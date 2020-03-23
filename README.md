@@ -1,4 +1,4 @@
-# fluttertestapp
+# flutter Chat App
 
 A  Flutter application for test.
 

@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_widgets/flutter_widgets.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_native_image/flutter_native_image.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import 'dart:io';
+
+import 'components.dart';
+import 'objects.dart';
 
 final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
 final Firestore _firestore = Firestore.instance;
@@ -113,7 +117,9 @@ class SignInPage extends StatelessWidget {
 
 class SignUpPage extends StatelessWidget {
   final TextEditingController _eMailController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final UserUpdateInfo _userUpdateInfo = UserUpdateInfo();
 
   @override
   Widget build(BuildContext context) {
@@ -122,37 +128,42 @@ class SignUpPage extends StatelessWidget {
         title: const Text('アカウント登録'),
       ),
       body: Container(
-        padding: const EdgeInsets.all(10.0),
+        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 20.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.all(30.0),
-            ),
-            Container(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  CustomTextField(_eMailController, "e-mail")
-                      .getSimpleTextField(),
-                  Padding(padding: const EdgeInsets.all(20.0)),
-                  CustomTextField(_passwordController, "password")
-                      .getSecretTextField(),
-                ],
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    CustomTextField(_nameController, "name")
+                        .getSimpleTextField(),
+                    Padding(padding: const EdgeInsets.all(20.0)),
+                    CustomTextField(_eMailController, "e-mail")
+                        .getSimpleTextField(),
+                    Padding(padding: const EdgeInsets.all(20.0)),
+                    CustomTextField(_passwordController, "password")
+                        .getSecretTextField(),
+                  ],
+                ),
               ),
             ),
-            SimpleRaisedButton("登録する", () {
+            SimpleRaisedButton("登録する", () async {
               if (_eMailController.text != "" &&
                   _passwordController.text != "") {
                 _signUp(_eMailController.text, _passwordController.text).then(
-                  (AuthResult result) {
+                  (AuthResult result) async {
                     _user = result.user;
+                    _userUpdateInfo.displayName = _nameController.text;
+                    await _user.updateProfile(_userUpdateInfo);
+                    _user = await _firebaseAuth.currentUser();
+                    await registUser();
                     Navigator.of(context)
                         .pushNamedAndRemoveUntil("/roomList", (_) => false);
-                    registProfile();
                   },
                 ).catchError((e) {
                   print("signUpError: e");
@@ -166,7 +177,6 @@ class SignUpPage extends StatelessWidget {
                 Fluttertoast.showToast(
                   msg: "空欄があります。",
                   gravity: ToastGravity.CENTER,
-                  backgroundColor: Colors.redAccent,
                   fontSize: 20.0,
                 );
               }
@@ -187,11 +197,12 @@ class SignUpPage extends StatelessWidget {
     return result;
   }
 
-  Future<void> registProfile() async {
+  Future<void> registUser() async {
     //uidをドキュメント名にしてユーザー情報をFirestoreの'users'コレクションに登録
-    _firestore.collection('users').document(_user.uid).setData({
+    await _firestore.collection('users').document(_user.uid).setData({
       'id': _user.uid,
       'email': _user.email,
+      'name': _user.displayName,
     });
   }
 }
@@ -273,7 +284,7 @@ class _RoomListPageState extends State<RoomListPage> {
     snapshot.documents.forEach((DocumentSnapshot document) {
       rooms.add(
         Room(document.data['id'], document.data['name'],
-            document.data['careateUser'],
+            document.data['createUser'],
             participantNum: document.data['participantNum']),
       );
     });
@@ -362,15 +373,16 @@ class RoomCreatePage extends StatelessWidget {
   }
 
   Future<void> createRoom(Room room) async {
-    return await _firestore
-        .collection('rooms')
-        .document(room.id)
-        .setData(<String, dynamic>{
+    DocumentReference docRef = _firestore.collection('rooms').document(room.id);
+
+    await docRef.setData(<String, dynamic>{
       'id': room.id,
       'name': room.name,
       'createUser': room.createUser,
-      'participantNum': 1,
+      'participantNum': 0,
     });
+
+    docRef.collection('messages').document('0').setData(<String, dynamic>{});
   }
 }
 
@@ -384,11 +396,22 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
+  DocumentReference _roomRef;
   TextEditingController _messageController = TextEditingController();
+  final ItemScrollController _itemScrollController = ItemScrollController();
+  final ItemPositionsListener _itemPositionListener =
+      ItemPositionsListener.create();
+
+  @override
+  void initState() {
+    super.initState();
+    entryRoom();
+  }
 
   @override
   void dispose() {
     _messageController.dispose();
+    leaveRoom();
     super.dispose();
   }
 
@@ -404,32 +427,64 @@ class _ChatPageState extends State<ChatPage> {
         ],
       ),
       body: Container(
-        padding: EdgeInsets.symmetric(horizontal: 20.0),
+        padding: EdgeInsets.symmetric(horizontal: 10.0),
         child: Column(
           verticalDirection: VerticalDirection.up,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            TextField(
-              controller: _messageController,
-              decoration: InputDecoration(
-                  hintText: "メッセージを入力",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10.0),
+            Container(
+              width: MediaQuery.of(context).size.width - 20.0,
+              margin: EdgeInsets.only(bottom: 10.0),
+              padding: EdgeInsets.only(left: 10.0),
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: const Color.fromARGB(255, 0, 179, 36),
+                ),
+                borderRadius: BorderRadius.circular(10.0),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: <Widget>[
+                  Expanded(
+                    child: TextField(
+                      key: ObjectKey(this),
+                      controller: _messageController,
+                      decoration: InputDecoration(
+                        hintText: "メッセージを入力",
+                        border: InputBorder.none,
+                      ),
+                      keyboardType: TextInputType.multiline,
+                      maxLines: null,
+                    ),
                   ),
-                  fillColor: Colors.white70,
-                  filled: true,
-                  suffixIcon: IconButton(
+//                  Container(
+//                    height: 50.0,
+//                    margin: EdgeInsets.only(right: 5.0),
+//                    child: VerticalDivider(
+//                      width: 1.0,
+//                      color: const Color.fromARGB(255, 0, 179, 36),
+//                      thickness: 1.0,
+//                    ),
+//                  ),
+                  IconButton(
                     icon: Icon(Icons.send),
-                    onPressed: () {},
+                    onPressed: () async {
+                      Message message = Message(
+                          DateTime.now().millisecondsSinceEpoch,
+                          _messageController.text,
+                          _user.displayName);
+                      _messageController.clear();
+                      FocusScope.of(context).unfocus();
+                      await sendMessage(message);
+                    },
+                    color: const Color.fromARGB(255, 0, 179, 36),
                     highlightColor: const Color.fromARGB(100, 0, 77, 34),
-                  )),
+                  )
+                ],
+              ),
             ),
             StreamBuilder(
-              stream: _firestore
-                  .collection('rooms')
-                  .document(widget.room.id)
-                  .collection('messages')
-                  .snapshots(),
+              stream: _roomRef.collection('messages').snapshots(),
               builder: (BuildContext context,
                   AsyncSnapshot<QuerySnapshot> snapshot) {
                 if (!snapshot.hasData)
@@ -443,49 +498,153 @@ class _ChatPageState extends State<ChatPage> {
                 else {
                   List<DocumentSnapshot> documents = snapshot.data.documents;
 
-                  return Container(
-                    constraints: BoxConstraints.expand(
-                        height: MediaQuery.of(context).size.height -
-                            AppBar().preferredSize.height -
-                            100),
-                    child: ListView.builder(
-                      itemCount: documents.length,
-                      itemBuilder: (BuildContext context, int index) {
-                        DocumentSnapshot document =
-                            snapshot.data.documents.elementAt(index);
-                        Message message = Message(document.data['content'],
-                            document.data['userName']);
-                        return buildMessageRow(message);
-                      },
-                    ),
-                  );
+                  moveToBottom();
+
+                  if (documents.length > 1) {
+                    return Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20.0),
+                        child: ScrollablePositionedList.builder(
+//                      child: ListView.builder(
+                          itemCount: documents.length - 1,
+                          itemScrollController: _itemScrollController,
+                          itemPositionsListener: _itemPositionListener,
+                          itemBuilder: (BuildContext context, int index) {
+                            DocumentSnapshot document =
+                                documents.elementAt(index + 1);
+                            Message message = Message(
+                              document.data['generatedTime'] ?? 0,
+                              document.data['content'] ?? '',
+                              document.data['userName'] ?? '',
+                            );
+                            return buildMessageRow(message);
+                          },
+                        ),
+                      ),
+                    );
+                  } else {
+                    return Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20.0),
+                      ),
+                    );
+                  }
                 }
               },
             ),
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        child: Icon(Icons.touch_app),
+        onPressed: moveToBottom,
+      ),
     );
   }
 
-  Row buildMessageRow(Message message) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: <Widget>[
-        Text(
-          message.userName,
-          style: TextStyle(fontSize: 10.0),
-        ),
-        Padding(
-          padding: EdgeInsets.all(10.0),
-        ),
-        Text(
-          message.content,
-          style: TextStyle(fontSize: 20.0),
-        ),
-      ],
+  Widget buildMessageRow(Message message) {
+    if (message.userName == _user.displayName) {
+      message.alignment = CrossAxisAlignment.end;
+      message.textDirection = TextDirection.rtl;
+      message.backgroundColor = Color.fromARGB(255, 227, 251, 232);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(15.0),
+      child: Column(
+        crossAxisAlignment: message.alignment,
+        children: <Widget>[
+          Padding(
+            padding: EdgeInsets.only(bottom: 5.0),
+            child: Text(
+              message.userName,
+              style: TextStyle(fontSize: 10.0),
+            ),
+          ),
+          Row(
+            textDirection: message.textDirection,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              Flexible(
+                child: Container(
+                  padding: EdgeInsets.all(15.0),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                        color: const Color.fromARGB(255, 0, 179, 36)),
+                    borderRadius: BorderRadius.circular(10.0),
+                    color: message.backgroundColor,
+                  ),
+                  child: Text(
+                    message.content,
+                    style: TextStyle(fontSize: 20.0),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.all(3.0),
+              ),
+              Container(
+                height: 50.0,
+                alignment: Alignment.bottomCenter,
+                child: Text(
+                  ((DateTime.fromMillisecondsSinceEpoch(message.generatedTime))
+                      .toString()
+                      .substring(0, 19)),
+                  style: TextStyle(fontSize: 10.0),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> sendMessage(Message message) async {
+    //メッセージ送信時のタイムスタンプをidとするメッセージのドキュメントをFirestoreに保存
+    await _roomRef
+        .collection('messages')
+        .document(message.generatedTime.toString())
+        .setData(<String, dynamic>{
+      "generatedTime": message.generatedTime,
+      "content": message.content,
+      "userName": message.userName,
+    });
+  }
+
+  Future<void> entryRoom() async {
+    _roomRef = _firestore.collection('rooms').document(widget.room.id);
+    await _roomRef.updateData(<String, dynamic>{
+      'participantNum': FieldValue.increment(1),
+    });
+//    await moveToBottom();
+  }
+
+  Future<void> leaveRoom() async {
+    await _roomRef.updateData(<String, dynamic>{
+      'participantNum': FieldValue.increment(-1),
+    });
+    DocumentSnapshot document = await _roomRef.get();
+    if (document.data['participantNum'] == 0) {
+      QuerySnapshot snapshot =
+          await _roomRef.collection('messages').getDocuments();
+      snapshot.documents.forEach((DocumentSnapshot document) async {
+        await document.reference.delete();
+      });
+      await _roomRef.delete();
+    }
+  }
+
+  Future<void> moveToBottom() async {
+    await _roomRef
+        .collection('messages')
+        .getDocuments()
+        .then((QuerySnapshot snapshot) {
+      _itemScrollController.jumpTo(
+        index: snapshot.documents.length - 2, //１個ダミーを入れてるのと、indexは0から始まるので-2する。
+//        duration: Duration(microseconds: 1),
+      );
+    });
   }
 }
 
@@ -663,82 +822,4 @@ class _ProfilePageState extends State<ProfilePage> {
       return null;
     }
   }
-}
-
-class CustomTextField {
-  final TextEditingController controller;
-  final String hintText;
-  bool isValid;
-
-  CustomTextField(this.controller, this.hintText, {this.isValid: false});
-
-  Padding getSimpleTextField() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: hintText,
-        ),
-        style: const TextStyle(fontSize: 18.0),
-      ),
-    );
-  }
-
-  Padding getSecretTextField() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: TextField(
-        controller: controller,
-        obscureText: true,
-        decoration: InputDecoration(
-          labelText: hintText,
-        ),
-        style: const TextStyle(fontSize: 18.0),
-      ),
-    );
-  }
-}
-
-class SimpleRaisedButton {
-  final String text;
-  final double fontSize;
-  final double width;
-  final Function function;
-
-  SimpleRaisedButton(this.text, this.function,
-      {this.fontSize: 24.0, this.width: 70.0});
-
-  RaisedButton getSimpleRaisedButton() {
-    return RaisedButton(
-      padding: EdgeInsets.symmetric(horizontal: width, vertical: 15.0),
-      shape: StadiumBorder(),
-      color: const Color.fromARGB(255, 0, 102, 20),
-      highlightColor: const Color.fromARGB(255, 0, 179, 36),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: fontSize,
-          color: Colors.white,
-        ),
-      ),
-      onPressed: function,
-    );
-  }
-}
-
-class Room {
-  final String id;
-  final String name;
-  final String createUser;
-  int participantNum;
-
-  Room(this.id, this.name, this.createUser, {this.participantNum});
-}
-
-class Message {
-  final String content;
-  final String userName;
-
-  Message(this.content, this.userName);
 }
