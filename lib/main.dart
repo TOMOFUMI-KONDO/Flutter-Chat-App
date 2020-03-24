@@ -10,7 +10,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import 'dart:io';
 
-import 'components.dart';
+import 'myWidgets.dart';
 import 'objects.dart';
 
 final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
@@ -60,7 +60,7 @@ class SignInPage extends StatelessWidget {
               child: SimpleRaisedButton("新規登録はこちら", () {
                 Navigator.of(context).pushNamed("/signUp");
               }, fontSize: 16.0, width: 20.0)
-                  .getSimpleRaisedButton(),
+                  .getRoundedRaisedButton(),
             ),
             Container(
               child: Column(
@@ -68,10 +68,10 @@ class SignInPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  CustomTextField(_eMailController, "e-mail")
+                  CustomTextField(_eMailController, labelText: "e-mail")
                       .getSimpleTextField(),
                   Padding(padding: const EdgeInsets.all(20.0)),
-                  CustomTextField(_passwordController, "password")
+                  CustomTextField(_passwordController, labelText: "password")
                       .getSecretTextField(),
                 ],
               ),
@@ -99,7 +99,7 @@ class SignInPage extends StatelessWidget {
                     fontSize: 20.0);
               }
             }, fontSize: 24.0, width: 70.0)
-                .getSimpleRaisedButton(),
+                .getRoundedRaisedButton(),
           ],
         ),
       ),
@@ -140,13 +140,13 @@ class SignUpPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    CustomTextField(_nameController, "name")
+                    CustomTextField(_nameController, labelText: "name")
                         .getSimpleTextField(),
                     Padding(padding: const EdgeInsets.all(20.0)),
-                    CustomTextField(_eMailController, "e-mail")
+                    CustomTextField(_eMailController, labelText: "e-mail")
                         .getSimpleTextField(),
                     Padding(padding: const EdgeInsets.all(20.0)),
-                    CustomTextField(_passwordController, "password")
+                    CustomTextField(_passwordController, labelText: "password")
                         .getSecretTextField(),
                   ],
                 ),
@@ -181,7 +181,7 @@ class SignUpPage extends StatelessWidget {
                 );
               }
             }, fontSize: 24.0, width: 70.0)
-                .getSimpleRaisedButton(),
+                .getRoundedRaisedButton(),
           ],
         ),
       ),
@@ -266,7 +266,7 @@ class _RoomListPageState extends State<RoomListPage> {
               () => Navigator.of(context).pushNamed("/createRoom"),
               fontSize: 24.0,
               width: 70.0,
-            ).getSimpleRaisedButton(),
+            ).getRoundedRaisedButton(),
           ],
         ),
       ),
@@ -289,25 +289,54 @@ class _RoomListPageState extends State<RoomListPage> {
       );
     });
     rooms.forEach((Room room) {
-      list.add(
-        ListTile(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              settings: const RouteSettings(name: '/chat'),
-              builder: (BuildContext context) => ChatPage(room),
+      //ルームを作成したユーザーはそのルームを削除することができる。
+      if (room.createUser == _user.displayName) {
+        list.add(
+          ListTile(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                settings: const RouteSettings(name: '/chat'),
+                builder: (BuildContext context) => ChatPage(room),
+              ),
+            ),
+            leading: IconButton(
+              icon: Icon(Icons.delete),
+              tooltip: 'ルームを削除',
+              onPressed: () => deleteRoom(room),
+            ),
+            title: Text(room.name ?? '？'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text('${room.participantNum ?? '？'}人'),
+                Padding(padding: EdgeInsets.all(20.0))
+              ],
             ),
           ),
-          leading: Padding(padding: EdgeInsets.all(20.0)),
-          title: Text(room.name ?? '？'),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text('${room.participantNum ?? '？'}人'),
-              Padding(padding: EdgeInsets.all(20.0))
-            ],
+        );
+      } else {
+        list.add(
+          ListTile(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                settings: const RouteSettings(name: '/chat'),
+                builder: (BuildContext context) => ChatPage(room),
+              ),
+            ),
+            leading: Padding(
+              padding: EdgeInsets.all(20.0),
+            ),
+            title: Text(room.name ?? '？'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text('${room.participantNum ?? '？'}人'),
+                Padding(padding: EdgeInsets.all(20.0))
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      }
       list.add(Divider(
         color: borderColor,
       ));
@@ -328,6 +357,47 @@ class _RoomListPageState extends State<RoomListPage> {
             ),
           );
   }
+
+  void deleteRoom(Room room) {
+    showDialog(
+        context: context,
+        builder: (_) {
+          if (room.participantNum == 0) {
+            return AlertDialog(
+              title: Text("【ルームを削除】"),
+              content: Text("${room.name}を削除しますか？"),
+              actions: <Widget>[
+                FlatButton(
+                  child: Text("キャンセル"),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                FlatButton(
+                  child: Text("削除する"),
+                  onPressed: () async {
+                    await _firestore
+                        .collection("rooms")
+                        .document(room.id)
+                        .delete();
+                    Navigator.pop(context);
+                  },
+                )
+              ],
+            );
+          } else {
+            return AlertDialog(
+              title: Text("使用中のルーム"),
+              content: Text(
+                  "${room.name}には${room.participantNum}人のユーザが参加中のため、削除できません。"),
+              actions: <Widget>[
+                FlatButton(
+                  child: Text("戻る"),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            );
+          }
+        });
+  }
 }
 
 class RoomCreatePage extends StatelessWidget {
@@ -346,7 +416,8 @@ class RoomCreatePage extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
-              CustomTextField(_roomNameController, "ルーム名").getSimpleTextField(),
+              CustomTextField(_roomNameController, labelText: "ルーム名")
+                  .getSimpleTextField(),
               Padding(
                 padding: const EdgeInsets.all(30.0),
               ),
@@ -364,7 +435,7 @@ class RoomCreatePage extends StatelessWidget {
                   ),
                 );
               }, fontSize: 24.0, width: 70.0)
-                  .getSimpleRaisedButton(),
+                  .getRoundedRaisedButton(),
             ],
           ),
         ),
@@ -419,10 +490,19 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('チャット'),
+        title: Text(widget.room.name),
         actions: <Widget>[
           Center(
-            child: Text('${widget.room.name}　　'),
+            child: StreamBuilder(
+                stream: _roomRef.snapshots(),
+                builder: (BuildContext context,
+                    AsyncSnapshot<DocumentSnapshot> snapshot) {
+                  if (!snapshot.hasData) {
+                    return CircularProgressIndicator();
+                  } else {
+                    return Text('${snapshot.data['participantNum']}人が参加中　　');
+                  }
+                }),
           ),
         ],
       ),
@@ -535,10 +615,6 @@ class _ChatPageState extends State<ChatPage> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        child: Icon(Icons.touch_app),
-        onPressed: moveToBottom,
-      ),
     );
   }
 
@@ -550,7 +626,7 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     return Padding(
-      padding: const EdgeInsets.all(15.0),
+      padding: const EdgeInsets.all(5.0),
       child: Column(
         crossAxisAlignment: message.alignment,
         children: <Widget>[
@@ -576,7 +652,7 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                   child: Text(
                     message.content,
-                    style: TextStyle(fontSize: 20.0),
+                    style: TextStyle(fontSize: 16.0),
                   ),
                 ),
               ),
@@ -613,26 +689,27 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> entryRoom() async {
+    //ルームの参加人数を１人追加
     _roomRef = _firestore.collection('rooms').document(widget.room.id);
     await _roomRef.updateData(<String, dynamic>{
       'participantNum': FieldValue.increment(1),
     });
-//    await moveToBottom();
   }
 
   Future<void> leaveRoom() async {
     await _roomRef.updateData(<String, dynamic>{
       'participantNum': FieldValue.increment(-1),
     });
-    DocumentSnapshot document = await _roomRef.get();
-    if (document.data['participantNum'] == 0) {
-      QuerySnapshot snapshot =
-          await _roomRef.collection('messages').getDocuments();
-      snapshot.documents.forEach((DocumentSnapshot document) async {
-        await document.reference.delete();
-      });
-      await _roomRef.delete();
-    }
+    //ルームの削除は削除ボタンで行う仕様にした。
+//    DocumentSnapshot document = await _roomRef.get();
+//    if (document.data['participantNum'] == 0) {
+//      QuerySnapshot snapshot =
+//          await _roomRef.collection('messages').getDocuments();
+//      snapshot.documents.forEach((DocumentSnapshot document) async {
+//        await document.reference.delete();
+//      });
+//      await _roomRef.delete();
+//    }
   }
 
   Future<void> moveToBottom() async {
@@ -642,7 +719,6 @@ class _ChatPageState extends State<ChatPage> {
         .then((QuerySnapshot snapshot) {
       _itemScrollController.jumpTo(
         index: snapshot.documents.length - 2, //１個ダミーを入れてるのと、indexは0から始まるので-2する。
-//        duration: Duration(microseconds: 1),
       );
     });
   }
@@ -655,10 +731,11 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final TextEditingController _userNameController = TextEditingController();
+  final TextEditingController _commentController = TextEditingController();
   final UserUpdateInfo _userUpdateInfo = UserUpdateInfo();
 
   double deviceWidth;
-  double bodyHeight;
+//  double bodyHeight;
   File _imageFile;
   Image _image;
 
@@ -669,87 +746,110 @@ class _ProfilePageState extends State<ProfilePage> {
     if (_user.photoUrl != null) {
       _image = Image(image: CachedNetworkImageProvider(_user.photoUrl));
     }
+    getUserData();
   }
 
   @override
   void dispose() {
     _userNameController.dispose();
+    _commentController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     deviceWidth = MediaQuery.of(context).size.width;
-    bodyHeight =
-        MediaQuery.of(context).size.height - AppBar().preferredSize.height;
+//    bodyHeight =
+//        MediaQuery.of(context).size.height - AppBar().preferredSize.height;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('プロフィールを編集'),
       ),
       body: Container(
-        height: bodyHeight,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 50.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              Center(
-                child: GestureDetector(
-                  onTap: setImage,
-                  child: Container(
-                    width: deviceWidth * 0.7,
-                    height: deviceWidth * 0.7,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: const Color.fromARGB(255, 200, 200, 200)),
-                      image: DecorationImage(
-                        fit: BoxFit.fill,
-                        image: _imageFile != null
-                            ? FileImage(_imageFile)
-                            : _image != null
-                                ? _image.image
-                                : AssetImage(
-                                    'assets/images/text_photoSelect.png'),
-                      ),
-                    ),
-                    child: Align(
-                      alignment: Alignment(0.7, 0.7),
-                      child: Container(
-                        padding: EdgeInsets.all(10.0),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: const Color.fromARGB(255, 200, 200, 200),
-                          ),
-                          color: Colors.green,
+//        height: bodyHeight,
+        child: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 20.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                Center(
+                  child: GestureDetector(
+                    onTap: setImage,
+                    child: Container(
+                      width: deviceWidth * 0.7,
+                      height: deviceWidth * 0.7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: const Color.fromARGB(255, 200, 200, 200)),
+                        image: DecorationImage(
+                          fit: BoxFit.fill,
+                          image: _imageFile != null
+                              ? FileImage(_imageFile)
+                              : _image != null
+                                  ? _image.image
+                                  : AssetImage(
+                                      'assets/images/text_photoSelect.png'),
                         ),
-                        child: Icon(
-                          Icons.photo_camera,
-                          color: Colors.white,
+                      ),
+                      child: Align(
+                        alignment: Alignment(0.7, 0.7),
+                        child: Container(
+                          padding: EdgeInsets.all(10.0),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color.fromARGB(255, 200, 200, 200),
+                            ),
+                            color: Colors.green,
+                          ),
+                          child: Icon(
+                            Icons.photo_camera,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20.0),
-              ),
-              CustomTextField(_userNameController, "ユーザー名")
-                  .getSimpleTextField(),
-              Padding(
-                padding: const EdgeInsets.all(30.0),
-              ),
-              SimpleRaisedButton("保存", saveProfile, fontSize: 24.0, width: 70.0)
-                  .getSimpleRaisedButton(),
-            ],
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                ),
+                CustomTextField(_userNameController, labelText: "ユーザー名")
+                    .getSimpleTextField(),
+                Padding(
+                  padding: const EdgeInsets.all(10.0),
+                ),
+                SimpleRaisedButton("コメントを編集", editComment,
+                        fontSize: 16.0,
+                        backColor: const Color.fromARGB(255, 219, 230, 216),
+                        focusBackColor:
+                            const Color.fromARGB(255, 169, 180, 166),
+                        textColor: const Color.fromARGB(255, 48, 74, 60))
+                    .getSquareRaisedButton(),
+                Padding(
+                  padding: const EdgeInsets.all(30.0),
+                ),
+                SimpleRaisedButton("保存", saveProfile,
+                        fontSize: 24.0, width: 70.0)
+                    .getRoundedRaisedButton(),
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> getUserData() async {
+    DocumentSnapshot document;
+
+    document = await _firestore.collection('users').document(_user.uid).get();
+    _commentController.text = document.data['comment'] ?? "";
   }
 
   Future<void> setImage() async {
@@ -787,6 +887,33 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
+  void editComment() {
+    String currentComment = _commentController.text;
+
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) {
+          return AlertDialog(
+            title: Text("コメントを編集"),
+            content: CustomTextField(_commentController, hintText: "コメント")
+                .getDialogTextField(),
+            actions: <Widget>[
+              FlatButton(
+                  child: Text("Cancel"),
+                  onPressed: () {
+                    _commentController.text = currentComment;
+                    Navigator.pop(context);
+                  }),
+              FlatButton(
+                child: Text("Save"),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          );
+        });
+  }
+
   Future<void> saveProfile() async {
     _userUpdateInfo.displayName = _userNameController.text;
     if (_imageFile != null) {
@@ -801,6 +928,7 @@ class _ProfilePageState extends State<ProfilePage> {
       'name': _user.displayName,
       'email': _user.email,
       'photoUrl': _user.photoUrl,
+      'comment': _commentController.text,
     });
 
     Navigator.of(context).pop();

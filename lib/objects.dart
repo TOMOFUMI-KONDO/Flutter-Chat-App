@@ -6,7 +6,7 @@ class Room {
   final String createUser;
   int participantNum;
 
-  Room(this.id, this.name, this.createUser, {this.participantNum});
+  Room(this.id, this.name, this.createUser, {this.participantNum: 0});
 }
 
 class Message {
