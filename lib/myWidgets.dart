@@ -4,48 +4,113 @@ class CustomTextField {
   final TextEditingController controller;
   final String labelText;
   final String hintText;
+  final int maxLength;
+  final int maxLine;
+  final TextInputType textInputType;
 
-  CustomTextField(this.controller, {this.labelText, this.hintText});
+  CustomTextField(this.controller,
+      {this.labelText,
+      this.hintText,
+      this.maxLength: 50,
+      this.maxLine: 1,
+      this.textInputType: TextInputType.text});
 
   Padding getSimpleTextField() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: labelText,
+    if (labelText != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+        child: TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            labelText: labelText,
+          ),
+          style: const TextStyle(fontSize: 18.0),
+          maxLength: maxLength,
+          minLines: null,
+          maxLines: maxLine,
+          keyboardType: textInputType,
         ),
-        style: const TextStyle(fontSize: 18.0),
-        minLines: null,
-      ),
-    );
+      );
+    } else {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+        child: TextField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: hintText,
+          ),
+          style: const TextStyle(fontSize: 18.0),
+          maxLength: maxLength,
+          minLines: null,
+          maxLines: maxLine,
+          keyboardType: textInputType,
+        ),
+      );
+    }
   }
 
   Padding getSecretTextField() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-      child: TextField(
-        controller: controller,
-        obscureText: true,
-        decoration: InputDecoration(
-          labelText: labelText,
+    if (labelText != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+        child: TextField(
+          controller: controller,
+          obscureText: true,
+          decoration: InputDecoration(
+            labelText: labelText,
+          ),
+          style: const TextStyle(fontSize: 18.0),
+          maxLength: maxLength,
+          minLines: null,
+          maxLines: maxLine,
+          keyboardType: textInputType,
         ),
-        style: const TextStyle(fontSize: 18.0),
-      ),
-    );
+      );
+    } else {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+        child: TextField(
+          controller: controller,
+          obscureText: true,
+          decoration: InputDecoration(
+            hintText: hintText,
+          ),
+          style: const TextStyle(fontSize: 18.0),
+          maxLength: maxLength,
+          minLines: null,
+          maxLines: maxLine,
+          keyboardType: textInputType,
+        ),
+      );
+    }
   }
 
   TextField getDialogTextField() {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        hintText: hintText,
-      ),
-      style: const TextStyle(fontSize: 16.0),
-      keyboardType: TextInputType.multiline,
-      maxLines: 3,
-      maxLength: 45,
-    );
+    if (labelText != null) {
+      return TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: labelText,
+        ),
+        style: const TextStyle(fontSize: 16.0),
+        maxLength: maxLength,
+        minLines: null,
+        maxLines: maxLine,
+        keyboardType: textInputType,
+      );
+    } else {
+      return TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          hintText: hintText,
+        ),
+        style: const TextStyle(fontSize: 16.0),
+        maxLength: maxLength,
+        minLines: null,
+        maxLines: maxLine,
+        keyboardType: textInputType,
+      );
+    }
   }
 }
 

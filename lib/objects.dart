@@ -4,9 +4,11 @@ class Room {
   final String id;
   final String name;
   final String createUser;
+  final String imgURL;
   int participantNum;
 
-  Room(this.id, this.name, this.createUser, {this.participantNum: 0});
+  Room(this.id, this.name, this.createUser, this.imgURL,
+      {this.participantNum: 0});
 }
 
 class Message {

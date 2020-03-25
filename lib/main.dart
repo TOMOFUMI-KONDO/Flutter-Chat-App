@@ -7,6 +7,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_native_image/flutter_native_image.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:path/path.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -50,6 +51,8 @@ class SignInPage extends StatelessWidget {
         title: const Text('ログイン'),
       ),
       body: Container(
+//        height: MediaQuery.of(context).size.height -
+//            AppBar().preferredSize.height,
         padding: const EdgeInsets.all(10.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -70,7 +73,7 @@ class SignInPage extends StatelessWidget {
                 children: <Widget>[
                   CustomTextField(_eMailController, labelText: "e-mail")
                       .getSimpleTextField(),
-                  Padding(padding: const EdgeInsets.all(20.0)),
+//                    Padding(padding: const EdgeInsets.all(20.0)),
                   CustomTextField(_passwordController, labelText: "password")
                       .getSecretTextField(),
                 ],
@@ -85,7 +88,7 @@ class SignInPage extends StatelessWidget {
                     Navigator.of(context).pushReplacementNamed("/roomList");
                   },
                 ).catchError((e) {
-                  print("signInError: e");
+                  print("signInError: $e");
                   Fluttertoast.showToast(
                     msg: "入力された内容に誤りがあります。",
                     gravity: ToastGravity.CENTER,
@@ -166,7 +169,7 @@ class SignUpPage extends StatelessWidget {
                         .pushNamedAndRemoveUntil("/roomList", (_) => false);
                   },
                 ).catchError((e) {
-                  print("signUpError: e");
+                  print("signUpError: $e");
                   Fluttertoast.showToast(
                     msg: "入力された内容に誤りがあります。",
                     gravity: ToastGravity.CENTER,
@@ -284,16 +287,22 @@ class _RoomListPageState extends State<RoomListPage> {
     snapshot.documents.forEach((DocumentSnapshot document) {
       rooms.add(
         Room(document.data['id'], document.data['name'],
-            document.data['createUser'],
+            document.data['createUser'], document.data['imgURL'],
             participantNum: document.data['participantNum']),
       );
     });
     rooms.forEach((Room room) {
+      //FirebaseStorageに保存してあるルームの画像を取得
+      Image roomImg;
+      if (room.imgURL != null) {
+        roomImg = Image(image: CachedNetworkImageProvider(room.imgURL));
+      }
+
       //ルームを作成したユーザーはそのルームを削除することができる。
       if (room.createUser == _user.displayName) {
         list.add(
           ListTile(
-            onTap: () => Navigator.of(context).push(
+            onTap: () => Navigator.of(this.context).push(
               MaterialPageRoute(
                 settings: const RouteSettings(name: '/chat'),
                 builder: (BuildContext context) => ChatPage(room),
@@ -304,12 +313,38 @@ class _RoomListPageState extends State<RoomListPage> {
               tooltip: 'ルームを削除',
               onPressed: () => deleteRoom(room),
             ),
-            title: Text(room.name ?? '？'),
+            title: Row(
+              children: <Widget>[
+                Flexible(child: Text(room.name ?? '？')),
+                Container(
+                  width: 40,
+                  height: 40,
+                  margin: EdgeInsets.only(left: 10.0),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color.fromARGB(255, 255, 255, 255),
+                    border: Border.all(
+                      color: const Color.fromARGB(255, 200, 200, 200),
+                    ),
+                    image: DecorationImage(
+                      fit: BoxFit.fill,
+                      image: roomImg != null
+                          ? roomImg.image
+                          : AssetImage(
+                              "assets/images/text_photoSelect.png"), //room.imgがなかった場合に表示
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.all(10.0),
+                )
+              ],
+            ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text('${room.participantNum ?? '？'}人'),
-                Padding(padding: EdgeInsets.all(20.0))
+                Padding(padding: EdgeInsets.all(10.0))
               ],
             ),
           ),
@@ -317,21 +352,45 @@ class _RoomListPageState extends State<RoomListPage> {
       } else {
         list.add(
           ListTile(
-            onTap: () => Navigator.of(context).push(
+            onTap: () => Navigator.of(this.context).push(
               MaterialPageRoute(
                 settings: const RouteSettings(name: '/chat'),
                 builder: (BuildContext context) => ChatPage(room),
               ),
             ),
             leading: Padding(
-              padding: EdgeInsets.all(20.0),
+              padding: EdgeInsets.all(24.0), //削除アイコンがある場合と文字の開始値がそろうように調整した。
             ),
-            title: Text(room.name ?? '？'),
+            title: Row(
+              children: <Widget>[
+                Text(room.name ?? '？'),
+                Container(
+                    width: 40,
+                    height: 40,
+                    margin: EdgeInsets.only(left: 10.0),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color.fromARGB(255, 255, 255, 255),
+                      border: Border.all(
+                        color: const Color.fromARGB(255, 200, 200, 200),
+                      ),
+                      image: DecorationImage(
+                        fit: BoxFit.fill,
+                        image: roomImg != null
+                            ? roomImg.image
+                            : AssetImage("assets/images/text_photoSelect.png"),
+                      ),
+                    )),
+                Padding(
+                  padding: EdgeInsets.all(10.0),
+                )
+              ],
+            ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text('${room.participantNum ?? '？'}人'),
-                Padding(padding: EdgeInsets.all(20.0))
+                Padding(padding: EdgeInsets.all(10.0))
               ],
             ),
           ),
@@ -360,7 +419,7 @@ class _RoomListPageState extends State<RoomListPage> {
 
   void deleteRoom(Room room) {
     showDialog(
-        context: context,
+        context: this.context,
         builder: (_) {
           if (room.participantNum == 0) {
             return AlertDialog(
@@ -369,29 +428,34 @@ class _RoomListPageState extends State<RoomListPage> {
               actions: <Widget>[
                 FlatButton(
                   child: Text("キャンセル"),
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(this.context),
                 ),
                 FlatButton(
-                  child: Text("削除する"),
+                  child: Text("削除する", style: TextStyle(color: Colors.red)),
                   onPressed: () async {
-                    await _firestore
-                        .collection("rooms")
-                        .document(room.id)
-                        .delete();
-                    Navigator.pop(context);
+                    DocumentReference roomRef =
+                        _firestore.collection("rooms").document(room.id);
+                    QuerySnapshot snapshot =
+                        await roomRef.collection("messages").getDocuments();
+                    snapshot.documents
+                        .forEach((DocumentSnapshot document) async {
+                      await document.reference.delete();
+                    });
+                    await roomRef.delete();
+                    Navigator.pop(this.context);
                   },
                 )
               ],
             );
           } else {
             return AlertDialog(
-              title: Text("使用中のルーム"),
+              title: Text("【使用中のルーム】"),
               content: Text(
                   "${room.name}には${room.participantNum}人のユーザが参加中のため、削除できません。"),
               actions: <Widget>[
                 FlatButton(
                   child: Text("戻る"),
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(this.context),
                 ),
               ],
             );
@@ -400,60 +464,152 @@ class _RoomListPageState extends State<RoomListPage> {
   }
 }
 
-class RoomCreatePage extends StatelessWidget {
+class RoomCreatePage extends StatefulWidget {
+  @override
+  _RoomCreatePageState createState() => _RoomCreatePageState();
+}
+
+class _RoomCreatePageState extends State<RoomCreatePage> {
   final TextEditingController _roomNameController = TextEditingController();
+  double _deviceWidth;
+  File _imageFile;
+
+  @override
+  void dispose() {
+    _roomNameController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    _deviceWidth = MediaQuery.of(context).size.width;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('ルームを作成'),
       ),
       body: Container(
         child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              CustomTextField(_roomNameController, labelText: "ルーム名")
-                  .getSimpleTextField(),
-              Padding(
-                padding: const EdgeInsets.all(30.0),
-              ),
-              SimpleRaisedButton("作成する", () async {
-                //roomのidはタイムスタンプを使う。
-                int id = DateTime.now().millisecondsSinceEpoch;
-                Room room =
-                    Room('$id', _roomNameController.text, _user.displayName);
-                await createRoom(room);
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                Center(
+                  child: GestureDetector(
+                    onTap: () async {
+                      String currentRoomName =
+                          _roomNameController.text; //この時点で入力されているルーム名を保存
 
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(
-                    settings: const RouteSettings(name: '/chat'),
-                    builder: (BuildContext context) => ChatPage(room),
+                      File image = await setImage();
+                      setState(() {
+                        _imageFile = image;
+                      });
+
+                      _roomNameController.text =
+                          currentRoomName; //リビルドされTextControllerの値が消えてしまうので、に保存しておいたルーム名を代入
+                    },
+                    child: Container(
+                      width: _deviceWidth * 0.7,
+                      height: _deviceWidth * 0.7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: const Color.fromARGB(255, 200, 200, 200)),
+                        image: DecorationImage(
+                          fit: BoxFit.fill,
+                          image: _imageFile != null
+                              ? FileImage(_imageFile)
+                              : AssetImage(
+                                  'assets/images/text_photoSelect.png'),
+                        ),
+                      ),
+                      child: Align(
+                        alignment: Alignment(0.7, 0.7),
+                        child: Container(
+                          padding: EdgeInsets.all(10.0),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color.fromARGB(255, 200, 200, 200),
+                            ),
+                            color: Colors.green,
+                          ),
+                          child: Icon(
+                            Icons.photo_camera,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                );
-              }, fontSize: 24.0, width: 70.0)
-                  .getRoundedRaisedButton(),
-            ],
+                ),
+                Padding(padding: EdgeInsets.all(10.0)),
+                CustomTextField(_roomNameController, labelText: "ルーム名")
+                    .getSimpleTextField(),
+                Padding(
+                  padding: const EdgeInsets.all(30.0),
+                ),
+                SimpleRaisedButton("作成する", () async {
+                  if (_imageFile != null) {
+                    //_imageFileをFirebase Storageに保存し、ダウンロードURLを取得
+                    String imgURL = await getImageURL(_imageFile);
+                    //roomのidは作成時のタイムスタンプにする。
+                    int id = DateTime.now().millisecondsSinceEpoch;
+                    Room room = Room('$id', _roomNameController.text,
+                        _user.displayName, imgURL);
+                    String result = await createRoom(room);
+
+                    if (result == "success") {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          settings: const RouteSettings(name: '/chat'),
+                          builder: (BuildContext context) => ChatPage(room),
+                        ),
+                      );
+                    } else {
+                      Fluttertoast.showToast(
+                        msg: "予期せぬエラーが発生しました。",
+                        gravity: ToastGravity.CENTER,
+                        fontSize: 20.0,
+                      );
+                    }
+                  } else {
+                    Fluttertoast.showToast(
+                      msg: "画像が選択されていません。",
+                      gravity: ToastGravity.CENTER,
+                      fontSize: 20.0,
+                    );
+                  }
+                }, fontSize: 24.0, width: 70.0)
+                    .getRoundedRaisedButton(),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Future<void> createRoom(Room room) async {
-    DocumentReference docRef = _firestore.collection('rooms').document(room.id);
+  Future<String> createRoom(Room room) async {
+    try {
+      DocumentReference docRef =
+          _firestore.collection('rooms').document(room.id);
 
-    await docRef.setData(<String, dynamic>{
-      'id': room.id,
-      'name': room.name,
-      'createUser': room.createUser,
-      'participantNum': 0,
-    });
+      await docRef.setData(<String, dynamic>{
+        'id': room.id,
+        'name': room.name,
+        'createUser': room.createUser,
+        'participantNum': 0,
+        'imgURL': room.imgURL,
+      });
+      docRef.collection('messages').document('0').setData(<String, dynamic>{});
 
-    docRef.collection('messages').document('0').setData(<String, dynamic>{});
+      return "success";
+    } catch (e) {
+      print(e);
+      return ("error");
+    }
   }
 }
 
@@ -467,11 +623,12 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  DocumentReference _roomRef;
-  TextEditingController _messageController = TextEditingController();
   final ItemScrollController _itemScrollController = ItemScrollController();
   final ItemPositionsListener _itemPositionListener =
       ItemPositionsListener.create();
+  TextEditingController _messageController = TextEditingController();
+  DocumentReference _roomRef;
+  Image roomImg;
 
   @override
   void initState() {
@@ -490,7 +647,35 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.room.name),
+        title: Row(
+          children: <Widget>[
+            Expanded(
+              child: SingleChildScrollView(
+                child: Text(widget.room.name),
+                scrollDirection: Axis.horizontal,
+              ),
+            ),
+            Container(
+              width: 35,
+              height: 35,
+              margin: EdgeInsets.only(left: 10.0),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color.fromARGB(255, 255, 255, 255),
+                border: Border.all(
+                  color: const Color.fromARGB(255, 200, 200, 200),
+                ),
+                image: DecorationImage(
+                  fit: BoxFit.fill,
+                  image: roomImg != null
+                      ? roomImg.image
+                      : AssetImage(
+                          "assets/images/text_photoSelect.png"), //room.imgがなかった場合に表示
+                ),
+              ),
+            ),
+          ],
+        ),
         actions: <Widget>[
           Center(
             child: StreamBuilder(
@@ -689,6 +874,11 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> entryRoom() async {
+    //FirebaseStorageからルーム画像を取得
+    if (widget.room.imgURL != null) {
+      roomImg = Image(image: CachedNetworkImageProvider(widget.room.imgURL));
+    }
+
     //ルームの参加人数を１人追加
     _roomRef = _firestore.collection('rooms').document(widget.room.id);
     await _roomRef.updateData(<String, dynamic>{
@@ -734,8 +924,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final TextEditingController _commentController = TextEditingController();
   final UserUpdateInfo _userUpdateInfo = UserUpdateInfo();
 
-  double deviceWidth;
-//  double bodyHeight;
+  double _deviceWidth;
   File _imageFile;
   Image _image;
 
@@ -758,16 +947,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    deviceWidth = MediaQuery.of(context).size.width;
-//    bodyHeight =
-//        MediaQuery.of(context).size.height - AppBar().preferredSize.height;
+    _deviceWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('プロフィールを編集'),
       ),
       body: Container(
-//        height: bodyHeight,
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: SingleChildScrollView(
@@ -778,10 +964,15 @@ class _ProfilePageState extends State<ProfilePage> {
               children: <Widget>[
                 Center(
                   child: GestureDetector(
-                    onTap: setImage,
+                    onTap: () async {
+                      File image = await setImage();
+                      setState(() {
+                        _imageFile = image;
+                      });
+                    },
                     child: Container(
-                      width: deviceWidth * 0.7,
-                      height: deviceWidth * 0.7,
+                      width: _deviceWidth * 0.7,
+                      height: _deviceWidth * 0.7,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
@@ -816,21 +1007,15 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(20.0),
-                ),
                 CustomTextField(_userNameController, labelText: "ユーザー名")
                     .getSimpleTextField(),
-                Padding(
-                  padding: const EdgeInsets.all(10.0),
-                ),
-                SimpleRaisedButton("コメントを編集", editComment,
-                        fontSize: 16.0,
-                        backColor: const Color.fromARGB(255, 219, 230, 216),
-                        focusBackColor:
-                            const Color.fromARGB(255, 169, 180, 166),
-                        textColor: const Color.fromARGB(255, 48, 74, 60))
-                    .getSquareRaisedButton(),
+                CustomTextField(
+                  _commentController,
+                  labelText: "コメント",
+                  textInputType: TextInputType.multiline,
+                  maxLine: 5,
+                  maxLength: 300,
+                ).getSimpleTextField(),
                 Padding(
                   padding: const EdgeInsets.all(30.0),
                 ),
@@ -852,68 +1037,6 @@ class _ProfilePageState extends State<ProfilePage> {
     _commentController.text = document.data['comment'] ?? "";
   }
 
-  Future<void> setImage() async {
-    File image = await ImagePicker.pickImage(source: ImageSource.gallery);
-
-    ImageProperties properties =
-        await FlutterNativeImage.getImageProperties(image.path);
-    //画像が横長の場合
-    if (properties.width < properties.height) {
-      image = await FlutterNativeImage.cropImage(
-        image.path,
-        0,
-        ((properties.height - properties.width) / 2).round(),
-        properties.width,
-        properties.width,
-      );
-    }
-    //画像が縦長の場合
-    else {
-      image = await FlutterNativeImage.cropImage(
-        image.path,
-        ((properties.width - properties.height) / 2).round(),
-        0,
-        properties.height,
-        properties.height,
-      );
-    }
-    image = await FlutterNativeImage.compressImage(image.path,
-        quality: 80,
-        targetWidth: 600,
-        targetHeight: (properties.height * 600 / properties.width).round());
-
-    setState(() {
-      _imageFile = image;
-    });
-  }
-
-  void editComment() {
-    String currentComment = _commentController.text;
-
-    showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) {
-          return AlertDialog(
-            title: Text("コメントを編集"),
-            content: CustomTextField(_commentController, hintText: "コメント")
-                .getDialogTextField(),
-            actions: <Widget>[
-              FlatButton(
-                  child: Text("Cancel"),
-                  onPressed: () {
-                    _commentController.text = currentComment;
-                    Navigator.pop(context);
-                  }),
-              FlatButton(
-                child: Text("Save"),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          );
-        });
-  }
-
   Future<void> saveProfile() async {
     _userUpdateInfo.displayName = _userNameController.text;
     if (_imageFile != null) {
@@ -931,23 +1054,77 @@ class _ProfilePageState extends State<ProfilePage> {
       'comment': _commentController.text,
     });
 
-    Navigator.of(context).pop();
+    Navigator.of(this.context).pop();
   }
+}
 
-  Future<String> getImageURL(File file) async {
-    print(file);
-    int timeStamp = DateTime.now().millisecondsSinceEpoch;
-    final StorageReference reference =
-        _firebaseStorage.ref().child('images').child('$timeStamp');
-    final StorageUploadTask uploadTask =
-        reference.putFile(file, StorageMetadata(contentType: "image/jpeg"));
+//モバイルのローカルストレージから写真を取得し、正方形にトリミングしてから圧縮したFile型の画像ファイルを返す。
+Future<File> setImage() async {
+  File image = await ImagePicker.pickImage(source: ImageSource.gallery);
 
-    StorageTaskSnapshot snapshot = await uploadTask.onComplete;
-    if (snapshot.error == null) {
-      return await snapshot.ref.getDownloadURL();
-    } else {
-      print('error: ${snapshot.error}');
-      return null;
-    }
+  ImageProperties properties =
+      await FlutterNativeImage.getImageProperties(image.path);
+  //画像が縦長の場合
+  if (properties.width < properties.height) {
+    image = await FlutterNativeImage.cropImage(
+      image.path,
+      0,
+      ((properties.height - properties.width) / 2).round(),
+      properties.width,
+      properties.width,
+    );
+  }
+  //画像が横長の場合
+  else {
+    image = await FlutterNativeImage.cropImage(
+      image.path,
+      ((properties.width - properties.height) / 2).round(),
+      0,
+      properties.height,
+      properties.height,
+    );
+  }
+  image = await FlutterNativeImage.compressImage(image.path,
+      quality: 80,
+      targetWidth: 600,
+      targetHeight: (properties.height * 600 / properties.width).round());
+
+  return image;
+}
+
+//引数に受け取ったFile型の画像データをFirebase-Storageに保存し、そのデータのダウンロードURLを返す。
+Future<String> getImageURL(File file) async {
+  int timeStamp = DateTime.now().millisecondsSinceEpoch;
+  final StorageReference reference =
+      _firebaseStorage.ref().child('images').child('$timeStamp');
+
+  //アップロードする画像ファイルの拡張子を取得し、メタデータのcontentTypeの指定に使う。
+  String fileExtension = extension(file.path);
+  String contentType = "image/";
+  switch (fileExtension) {
+    case ".jpg":
+      contentType = contentType + "jpeg";
+      break;
+    case ".jpeg":
+      contentType = contentType + "jpeg";
+      break;
+    case ".png":
+      contentType = contentType + "png";
+      break;
+    case ".gif":
+      contentType = contentType + "gif";
+      break;
+    default:
+      break;
+  }
+  final StorageUploadTask uploadTask =
+      reference.putFile(file, StorageMetadata(contentType: contentType));
+
+  StorageTaskSnapshot snapshot = await uploadTask.onComplete;
+  if (snapshot.error == null) {
+    return await snapshot.ref.getDownloadURL();
+  } else {
+    print('error: ${snapshot.error}');
+    return null;
   }
 }
