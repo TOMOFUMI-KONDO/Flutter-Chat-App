@@ -155,27 +155,70 @@ class SignUpPage extends StatelessWidget {
                 ),
               ),
             ),
+            Padding(padding: EdgeInsets.all(10.0)),
             SimpleRaisedButton("登録する", () async {
               if (_eMailController.text != "" &&
-                  _passwordController.text != "") {
-                _signUp(_eMailController.text, _passwordController.text).then(
-                  (AuthResult result) async {
-                    _user = result.user;
-                    _userUpdateInfo.displayName = _nameController.text;
-                    await _user.updateProfile(_userUpdateInfo);
-                    _user = await _firebaseAuth.currentUser();
-                    await registUser();
-                    Navigator.of(context)
-                        .pushNamedAndRemoveUntil("/roomList", (_) => false);
-                  },
-                ).catchError((e) {
-                  print("signUpError: $e");
+                  _passwordController.text != "" &&
+                  _nameController.text != "") {
+                //既存ユーザーのアカウント名を取得
+                List<String> userNames = [];
+                QuerySnapshot users =
+                    await _firestore.collection("users").getDocuments();
+                users.documents.forEach((DocumentSnapshot user) {
+                  userNames.add(user.data['name'].toString());
+                });
+
+                //同じアカウント名は使えないようにする。
+                if (userNames.contains(_nameController.text)) {
                   Fluttertoast.showToast(
-                    msg: "入力された内容に誤りがあります。",
+                    msg: "既に使われているアカウント名です。",
                     gravity: ToastGravity.CENTER,
                     fontSize: 20.0,
                   );
-                });
+                } else {
+                  _signUp(_eMailController.text, _passwordController.text).then(
+                    (AuthResult result) async {
+                      _user = result.user;
+                      _userUpdateInfo.displayName = _nameController.text;
+                      await _user.updateProfile(_userUpdateInfo);
+                      _user = await _firebaseAuth.currentUser();
+                      await registUser();
+                      Navigator.of(context)
+                          .pushNamedAndRemoveUntil("/roomList", (_) => false);
+                    },
+                  ).catchError((e) {
+                    print("signUpError: ${e.toString()}");
+                    String errorMessage = e.toString();
+                    int startIndex =
+                        18; //エラーステータスが"PlatformException("の後に続くので、最初の18文字を除外。
+                    int endIndex = errorMessage
+                        .indexOf(","); //エラーステータスの終わりが","で区切られているので、それ以降を除外。
+                    String errorStatus =
+                        errorMessage.substring(startIndex, endIndex);
+
+                    //エラーの種類ごとにエラーメッセージを作成
+                    String msg;
+                    switch (errorStatus) {
+                      case "ERROR_INVALID_EMAIL":
+                        msg = "メールアドレスの形式が正しくありません";
+                        break;
+                      case "ERROR_EMAIL_ALREADY_IN_USE":
+                        msg = "既に使われているメールアドレスです。";
+                        break;
+                      case "ERROR_WEAK_PASSWORD":
+                        msg = "パスワードが脆弱です。";
+                        break;
+                      default:
+                        msg = "入力内容に誤りがあります。";
+                        break;
+                    }
+                    Fluttertoast.showToast(
+                      msg: msg,
+                      gravity: ToastGravity.CENTER,
+                      fontSize: 20.0,
+                    );
+                  });
+                }
               } else {
                 Fluttertoast.showToast(
                   msg: "空欄があります。",
@@ -235,42 +278,47 @@ class _RoomListPageState extends State<RoomListPage> {
       ),
       body: Container(
         width: MediaQuery.of(context).size.width,
+        height:
+            MediaQuery.of(context).size.height - AppBar().preferredSize.height,
         padding: EdgeInsets.symmetric(vertical: 20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: <Widget>[
-            StreamBuilder(
-              stream: _firestore.collection('rooms').snapshots(),
-              builder: (BuildContext context,
-                  AsyncSnapshot<QuerySnapshot> snapshot) {
-                if (!snapshot.hasData)
-                  return Center(
-                    child: Container(
-                      constraints:
-                          BoxConstraints(maxWidth: 300.0, maxHeight: 300.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                else {
-                  return Container(
-                    width: MediaQuery.of(context).size.width,
-                    height: MediaQuery.of(context).size.height * 0.6,
-                    decoration: BoxDecoration(
-                      color: const Color.fromARGB(100, 210, 255, 229),
-                    ),
-                    child: getRooms(snapshot.data),
-                  );
-                }
-              },
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              children: <Widget>[
+                StreamBuilder(
+                  stream: _firestore.collection('rooms').snapshots(),
+                  builder: (BuildContext context,
+                      AsyncSnapshot<QuerySnapshot> snapshot) {
+                    if (!snapshot.hasData) {
+                      return Center(
+                        child: Container(
+                          constraints:
+                              BoxConstraints(maxWidth: 300.0, maxHeight: 300.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    } else {
+                      Widget rooms = getRooms(snapshot.data);
+                      return Container(
+                        height: MediaQuery.of(context).size.height * 0.6,
+                        decoration: BoxDecoration(
+                          color: const Color.fromARGB(100, 210, 255, 229),
+                        ),
+                        child: rooms,
+                      );
+                    }
+                  },
+                ),
+                Padding(padding: EdgeInsets.all(30.0)),
+                SimpleRaisedButton(
+                  "ルームを作成",
+                  () => Navigator.of(context).pushNamed("/createRoom"),
+                  fontSize: 24.0,
+                  width: 70.0,
+                ).getRoundedRaisedButton(),
+              ],
             ),
-            SimpleRaisedButton(
-              "ルームを作成",
-              () => Navigator.of(context).pushNamed("/createRoom"),
-              fontSize: 24.0,
-              width: 70.0,
-            ).getRoundedRaisedButton(),
-          ],
+          ),
         ),
       ),
     );
@@ -317,8 +365,8 @@ class _RoomListPageState extends State<RoomListPage> {
               children: <Widget>[
                 Flexible(child: Text(room.name ?? '？')),
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 50,
+                  height: 50,
                   margin: EdgeInsets.only(left: 10.0),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -328,10 +376,7 @@ class _RoomListPageState extends State<RoomListPage> {
                     ),
                     image: DecorationImage(
                       fit: BoxFit.fill,
-                      image: roomImg != null
-                          ? roomImg.image
-                          : AssetImage(
-                              "assets/images/text_photoSelect.png"), //room.imgがなかった場合に表示
+                      image: roomImg != null ? roomImg.image : null,
                     ),
                   ),
                 ),
@@ -365,8 +410,8 @@ class _RoomListPageState extends State<RoomListPage> {
               children: <Widget>[
                 Text(room.name ?? '？'),
                 Container(
-                    width: 40,
-                    height: 40,
+                    width: 50,
+                    height: 50,
                     margin: EdgeInsets.only(left: 10.0),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -667,10 +712,7 @@ class _ChatPageState extends State<ChatPage> {
                 ),
                 image: DecorationImage(
                   fit: BoxFit.fill,
-                  image: roomImg != null
-                      ? roomImg.image
-                      : AssetImage(
-                          "assets/images/text_photoSelect.png"), //room.imgがなかった場合に表示
+                  image: roomImg != null ? roomImg.image : null,
                 ),
               ),
             ),
@@ -712,7 +754,6 @@ class _ChatPageState extends State<ChatPage> {
                 children: <Widget>[
                   Expanded(
                     child: TextField(
-                      key: ObjectKey(this),
                       controller: _messageController,
                       decoration: InputDecoration(
                         hintText: "メッセージを入力",
@@ -720,23 +761,16 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                       keyboardType: TextInputType.multiline,
                       maxLines: null,
+                      maxLength: 100,
                     ),
                   ),
-//                  Container(
-//                    height: 50.0,
-//                    margin: EdgeInsets.only(right: 5.0),
-//                    child: VerticalDivider(
-//                      width: 1.0,
-//                      color: const Color.fromARGB(255, 0, 179, 36),
-//                      thickness: 1.0,
-//                    ),
-//                  ),
                   IconButton(
                     icon: Icon(Icons.send),
                     onPressed: () async {
                       Message message = Message(
                           DateTime.now().millisecondsSinceEpoch,
                           _messageController.text,
+                          _user.uid,
                           _user.displayName);
                       _messageController.clear();
                       FocusScope.of(context).unfocus();
@@ -752,7 +786,7 @@ class _ChatPageState extends State<ChatPage> {
               stream: _roomRef.collection('messages').snapshots(),
               builder: (BuildContext context,
                   AsyncSnapshot<QuerySnapshot> snapshot) {
-                if (!snapshot.hasData)
+                if (!snapshot.hasData) {
                   return Center(
                     child: Container(
                       constraints:
@@ -760,7 +794,7 @@ class _ChatPageState extends State<ChatPage> {
                       child: CircularProgressIndicator(),
                     ),
                   );
-                else {
+                } else {
                   List<DocumentSnapshot> documents = snapshot.data.documents;
 
                   moveToBottom();
@@ -770,7 +804,6 @@ class _ChatPageState extends State<ChatPage> {
                       child: Padding(
                         padding: EdgeInsets.symmetric(vertical: 20.0),
                         child: ScrollablePositionedList.builder(
-//                      child: ListView.builder(
                           itemCount: documents.length - 1,
                           itemScrollController: _itemScrollController,
                           itemPositionsListener: _itemPositionListener,
@@ -780,6 +813,7 @@ class _ChatPageState extends State<ChatPage> {
                             Message message = Message(
                               document.data['generatedTime'] ?? 0,
                               document.data['content'] ?? '',
+                              document.data['userId'] ?? '',
                               document.data['userName'] ?? '',
                             );
                             return buildMessageRow(message);
@@ -804,7 +838,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget buildMessageRow(Message message) {
-    if (message.userName == _user.displayName) {
+    if (message.userId == _user.uid) {
       message.alignment = CrossAxisAlignment.end;
       message.textDirection = TextDirection.rtl;
       message.backgroundColor = Color.fromARGB(255, 227, 251, 232);
@@ -826,6 +860,61 @@ class _ChatPageState extends State<ChatPage> {
             textDirection: message.textDirection,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
+              GestureDetector(
+                onTap: () {
+                  if (message.userId != _user.uid) {
+                    showProfile(message.userId);
+                  }
+                },
+                child: StreamBuilder(
+                  stream: _firestore
+                      .collection("users")
+                      .document(message.userId)
+                      .snapshots(),
+                  builder: (BuildContext context,
+                      AsyncSnapshot<DocumentSnapshot> snapshot) {
+                    if (!snapshot.hasData) {
+                      return Container(
+                        width: 35,
+                        height: 35,
+                        margin: EdgeInsets.symmetric(horizontal: 5.0),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color.fromARGB(255, 255, 255, 255),
+                          border: Border.all(
+                            color: const Color.fromARGB(255, 200, 200, 200),
+                          ),
+                        ),
+                      );
+                    } else {
+                      Image userImage;
+                      if (snapshot.data.data.containsKey("photoUrl")) {
+                        String imgUrl = snapshot.data['photoUrl'];
+                        userImage =
+                            Image(image: CachedNetworkImageProvider(imgUrl));
+                      }
+
+                      return Container(
+                        width: 35,
+                        height: 35,
+                        margin: EdgeInsets.symmetric(horizontal: 5.0),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color.fromARGB(255, 255, 255, 255),
+                          border: Border.all(
+                            color: const Color.fromARGB(255, 200, 200, 200),
+                          ),
+                          image: DecorationImage(
+                            fit: BoxFit.fill,
+                            //ユーザーのプロ画は非同期に取得
+                            image: userImage != null ? userImage.image : null,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
               Flexible(
                 child: Container(
                   padding: EdgeInsets.all(15.0),
@@ -861,18 +950,6 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Future<void> sendMessage(Message message) async {
-    //メッセージ送信時のタイムスタンプをidとするメッセージのドキュメントをFirestoreに保存
-    await _roomRef
-        .collection('messages')
-        .document(message.generatedTime.toString())
-        .setData(<String, dynamic>{
-      "generatedTime": message.generatedTime,
-      "content": message.content,
-      "userName": message.userName,
-    });
-  }
-
   Future<void> entryRoom() async {
     //FirebaseStorageからルーム画像を取得
     if (widget.room.imgURL != null) {
@@ -890,16 +967,6 @@ class _ChatPageState extends State<ChatPage> {
     await _roomRef.updateData(<String, dynamic>{
       'participantNum': FieldValue.increment(-1),
     });
-    //ルームの削除は削除ボタンで行う仕様にした。
-//    DocumentSnapshot document = await _roomRef.get();
-//    if (document.data['participantNum'] == 0) {
-//      QuerySnapshot snapshot =
-//          await _roomRef.collection('messages').getDocuments();
-//      snapshot.documents.forEach((DocumentSnapshot document) async {
-//        await document.reference.delete();
-//      });
-//      await _roomRef.delete();
-//    }
   }
 
   Future<void> moveToBottom() async {
@@ -907,10 +974,92 @@ class _ChatPageState extends State<ChatPage> {
         .collection('messages')
         .getDocuments()
         .then((QuerySnapshot snapshot) {
-      _itemScrollController.jumpTo(
-        index: snapshot.documents.length - 2, //１個ダミーを入れてるのと、indexは0から始まるので-2する。
-      );
+      if (snapshot.documents.length > 1) {
+        _itemScrollController.jumpTo(
+          index:
+              snapshot.documents.length - 2, //１個ダミーを入れてるのと、indexは0から始まるので-2する。
+        );
+      }
     });
+  }
+
+  Future<void> sendMessage(Message message) async {
+    //メッセージ送信時のタイムスタンプをidとするメッセージのドキュメントをFirestoreに保存
+    await _roomRef
+        .collection('messages')
+        .document(message.generatedTime.toString())
+        .setData(<String, dynamic>{
+      "generatedTime": message.generatedTime,
+      "content": message.content,
+      "userId": message.userId,
+      "userName": message.userName,
+    });
+  }
+
+  Future<void> showProfile(String userId) async {
+    final double deviceWidth = MediaQuery.of(this.context).size.width;
+    final double deviceHeight = MediaQuery.of(this.context).size.height;
+    String userName;
+    String comment;
+    String imgUrl;
+    Image img;
+
+    DocumentSnapshot document =
+        await _firestore.collection("users").document(userId).get();
+    userName = document.data["name"] ?? "";
+    comment = document.data["comment"] ?? "";
+    imgUrl = document.data["photoUrl"] ?? "";
+    if (imgUrl != null && imgUrl != "") {
+      img = Image(image: CachedNetworkImageProvider(imgUrl));
+    }
+
+    showDialog(
+      context: this.context,
+      builder: (_) {
+        return AlertDialog(
+          content: Container(
+            constraints: BoxConstraints(maxHeight: deviceHeight * 0.5),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  Container(
+                    width: deviceWidth * 0.5,
+                    height: deviceWidth * 0.5,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: const Color.fromARGB(255, 200, 200, 200)),
+                      image: DecorationImage(
+                        fit: BoxFit.fill,
+                        image: img != null ? img.image : null,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(15.0),
+                    child: Text(
+                      userName,
+                      style: TextStyle(fontSize: 20.0),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(15.0),
+                    child: Text(comment),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            FlatButton(
+              child: Text('閉じる'),
+              onPressed: () => Navigator.pop(this.context),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -965,10 +1114,18 @@ class _ProfilePageState extends State<ProfilePage> {
                 Center(
                   child: GestureDetector(
                     onTap: () async {
+                      //リビルド時に消えてしまうため、現時点でのTextFieldの値を一時保存しておく。
+                      String currentUserName = _userNameController.text;
+                      String currentComment = _commentController.text;
+
                       File image = await setImage();
                       setState(() {
                         _imageFile = image;
                       });
+
+                      //リビルト後に、一時保存しておいた値を代入する。
+                      _userNameController.text = currentUserName;
+                      _commentController.text = currentComment;
                     },
                     child: Container(
                       width: _deviceWidth * 0.7,

@@ -14,12 +14,13 @@ class Room {
 class Message {
   final int generatedTime;
   final String content;
+  final String userId;
   final String userName;
   CrossAxisAlignment alignment;
   TextDirection textDirection;
   Color backgroundColor;
 
-  Message(this.generatedTime, this.content, this.userName,
+  Message(this.generatedTime, this.content, this.userId, this.userName,
       {this.alignment: CrossAxisAlignment.start,
       this.textDirection: TextDirection.ltr,
       this.backgroundColor: const Color.fromARGB(255, 255, 255, 255)});
